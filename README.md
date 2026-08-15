@@ -4,6 +4,14 @@
   <img src="build/icon.png" width="96" alt="DSH Desktop" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img alt="DSH Official" src="https://img.shields.io/badge/DSH-Official%20Repo-4D6BFE?style=flat-square&logo=deepseek&logoColor=white"></a>
+  <a href="https://github.com/InkWord01/DeepSeekHarness----Desktop/releases"><img alt="Release" src="https://img.shields.io/github/v/release/InkWord01/DeepSeekHarness----Desktop?style=flat-square&color=10b981"></a>
+  <a href="https://github.com/InkWord01/DeepSeekHarness----Desktop/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-10b981?style=flat-square"></a>
+  <a href="https://github.com/InkWord01/DeepSeekHarness----Desktop/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/InkWord01/DeepSeekHarness----Desktop?style=flat-square&color=10b981"></a>
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img alt="DSH Stars" src="https://img.shields.io/github/stars/deepseek-ai/deepseek-harness?style=flat-square&label=DSH%20Stars&color=4D6BFE"></a>
+</p>
+
 将 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）打包为
 **Windows 桌面应用**：双击即用，无需手动安装 Node.js、无需命令行、无需打开浏览器。
 
