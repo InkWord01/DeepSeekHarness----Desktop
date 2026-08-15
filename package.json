@@ -17,13 +17,16 @@
     "prepare:backend:arm64": "node scripts/prepare-backend.mjs --arch arm64",
     "dist:x64": "npm run prepare:backend:x64 && electron-builder --win nsis --x64",
     "dist:arm64": "npm run prepare:backend:arm64 && electron-builder --win nsis --arm64",
-    "dist:all": "npm run dist:x64 && npm run dist:arm64"
+    "dist:all": "npm run dist:x64 && npm run dist:arm64",
+    "dist:release": "npm run prepare:backend:x64 && electron-builder --win nsis --x64 --publish never"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
   "devDependencies": {
+    "@deepseek-ai/dsh": "^0.1.0-rc.6",
     "electron": "^43.0.0",
-    "electron-builder": "^25.0.0",
-    "@deepseek-ai/dsh": "^0.1.0-rc.6"
+    "electron-builder": "^25.0.0"
   },
   "build": {
     "appId": "com.deepseek.harness.desktop",
@@ -54,6 +57,13 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "build/icon.ico",
@@ -71,6 +81,16 @@
       "en-US",
       "zh-CN"
     ],
-    "compression": "maximum"
+    "compression": "maximum",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "InkWord01",
+        "repo": "DeepSeekHarness----Desktop"
+      }
+    ],
+    "portable": {
+      "artifactName": "DeepSeek-Harness-Desktop-${version}-${arch}-portable.${ext}"
+    }
   }
 }

@@ -2,7 +2,8 @@
 // 职责：单实例锁 → 探测/启动 DSH 后端 → 等待就绪 → 加载 UI → 托盘与生命周期管理
 "use strict";
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, dialog } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { spawn, execFile } = require("node:child_process");
 const http = require("node:http");
 const net = require("node:net");
@@ -13,6 +14,49 @@ const os = require("node:os");
 const DEFAULT_PORT = Number(process.env.DSH_DESKTOP_PORT || 3080); // 默认 3080；环境变量可覆盖（测试/多开用）
 const DSH_BOOT_MARKER = "__DSH_BOOT__"; // dsh web 注入 window 的标识，用于识别 DSH 页面
 const IS_PACKAGED = app.isPackaged;
+
+// ---------- 语言 ----------
+// 根据系统语言选择界面文案（zh-CN / en）
+const UI_LANG = (app.getLocale() || "en").toLowerCase().startsWith("zh") ? "zh" : "en";
+const I18N = {
+  zh: {
+    splashTitle: "DeepSeek Harness Desktop",
+    splashSub: "正在启动 DSH 后端，请稍候…",
+    trayTooltip: "DeepSeek Harness Desktop",
+    trayShow: "显示主窗口",
+    trayQuit: "退出",
+    updateBalloonTitle: "官方 DSH 有新版本",
+    updateBalloonContent: (latest, bundled) => `官方 DSH 已更新至 ${latest}（当前内置 ${bundled}）。\n桌面端可同步更新，详见 GitHub Releases。`,
+    updTitle: "发现新版本",
+    updMessage: (v) => `DeepSeek Harness Desktop ${v} 可用`,
+    updDetail: "是否现在下载更新？下载完成后退出应用时自动安装。",
+    updBtnDownload: "下载更新",
+    updBtnLater: "以后再说",
+    updDownloadedMsg: (v) => `${v} 已下载完成`,
+    updDownloadedDetail: "退出应用时将自动安装新版本。",
+    updBtnRestart: "立即重启更新",
+    updBtnSoon: "稍后"
+  },
+  en: {
+    splashTitle: "DeepSeek Harness Desktop",
+    splashSub: "Starting DSH backend, please wait…",
+    trayTooltip: "DeepSeek Harness Desktop",
+    trayShow: "Show Window",
+    trayQuit: "Quit",
+    updateBalloonTitle: "Official DSH has a new version",
+    updateBalloonContent: (latest, bundled) => `Official DSH updated to ${latest} (bundled: ${bundled}).\nSync the desktop client from GitHub Releases.`,
+    updTitle: "Update Available",
+    updMessage: (v) => `DeepSeek Harness Desktop ${v} is available`,
+    updDetail: "Download now? It will install automatically when you quit the app.",
+    updBtnDownload: "Download Update",
+    updBtnLater: "Later",
+    updDownloadedMsg: (v) => `${v} downloaded`,
+    updDownloadedDetail: "It will install when you quit the app.",
+    updBtnRestart: "Restart & Update",
+    updBtnSoon: "Later"
+  }
+};
+const T = I18N[UI_LANG];
 
 let mainWindow = null;
 let tray = null;
@@ -52,10 +96,12 @@ function resolveBackendPaths() {
   };
 }
 
-// ---------- HTTP 探测 ----------
+// ---------- HTTP 探测（支持 http/https） ----------
+const https = require("node:https");
 function httpGet(url, timeoutMs = 1500) {
   return new Promise((resolve) => {
-    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+    const mod = url.startsWith("https:") ? https : http;
+    const req = mod.get(url, { timeout: timeoutMs }, (res) => {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (c) => { body += c; });
@@ -234,11 +280,11 @@ function createTray() {
     icon = nativeImage.createEmpty();
   }
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip("DeepSeek Harness Desktop");
+  tray.setToolTip(T.trayTooltip);
   const menu = Menu.buildFromTemplate([
-    { label: "显示主窗口", click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+    { label: T.trayShow, click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
     { type: "separator" },
-    { label: "退出", click: () => { app.quit(); } }
+    { label: T.trayQuit, click: () => { app.quit(); } }
   ]);
   tray.setContextMenu(menu);
   tray.on("double-click", () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
@@ -280,17 +326,110 @@ function createSplash() {
     @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
   </style></head><body>
     <div class="logo">DSH</div>
-    <div class="title">DeepSeek Harness Desktop</div>
-    <div class="sub">正在启动 DSH 后端，请稍候…</div>
+    <div class="title">${T.splashTitle}</div>
+    <div class="sub">${T.splashSub}</div>
     <div class="bar"><i></i></div>
   </body></html>`;
   splashWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
   splashWindow.once("ready-to-show", () => splashWindow.show());
 }
 
+
+// ---------- 自动更新 ----------
+const GITHUB_REPO = "InkWord01/DeepSeekHarness----Desktop";
+let updateChecked = false;
+
+// 官方 DSH 版本检查（npm registry）
+async function checkOfficialDshVersion() {
+  try {
+    const res = await httpGet("https://registry.npmjs.org/@deepseek-ai/dsh/latest", 5000);
+    if (res && res.status === 200) {
+      const data = JSON.parse(res.body);
+      const latest = data.version;
+      const bundled = readBundledDshVersion();
+      if (bundled && latest && bundled !== latest && !isNewer(bundled, latest)) {
+        console.log(`[dsh-desktop] 官方 DSH 新版本可用: ${latest} (当前内置: ${bundled})`);
+        // 通过托盘提示（不打扰主界面）
+        if (tray) {
+          tray.displayBalloon({
+            iconType: "info",
+            title: T.updateBalloonTitle,
+            content: T.updateBalloonContent(latest, bundled)
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.log("[dsh-desktop] 版本检查失败:", e.message);
+  }
+}
+
+function isNewer(a, b) {
+  // 简单语义化比较: a >= b 返回 true
+  const pa = a.split(/[.-]/).map(Number);
+  const pb = b.split(/[.-]/).map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] || 0, vb = pb[i] || 0;
+    if (va > vb) return true;
+    if (va < vb) return false;
+  }
+  return true;
+}
+
+function readBundledDshVersion() {
+  try {
+    const paths = resolveBackendPaths();
+    const pkgPath = path.join(paths.base, "node_modules", "@deepseek-ai", "dsh", "package.json");
+    if (fs.existsSync(pkgPath)) {
+      return JSON.parse(fs.readFileSync(pkgPath, "utf8")).version;
+    }
+  } catch {}
+  return null;
+}
+
+function setupAutoUpdate() {
+  if (!IS_PACKAGED) return;
+  autoUpdater.autoDownload = false; // 只提示，不自动下载（用户选择）
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on("update-available", (info) => {
+    console.log("[dsh-desktop] 桌面端新版本可用:", info.version);
+    const choice = dialog.showMessageBoxSync({
+      type: "info",
+      title: T.updTitle,
+      message: T.updMessage(info.version),
+      detail: T.updDetail,
+      buttons: [T.updBtnDownload, T.updBtnLater],
+      defaultId: 0
+    });
+    if (choice === 0) {
+      autoUpdater.downloadUpdate();
+    }
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    const choice = dialog.showMessageBoxSync({
+      type: "info",
+      title: "Update",
+      message: T.updDownloadedMsg(info.version),
+      detail: T.updDownloadedDetail,
+      buttons: [T.updBtnRestart, T.updBtnSoon],
+      defaultId: 0
+    });
+    if (choice === 0) autoUpdater.quitAndInstall();
+  });
+  autoUpdater.on("error", (e) => console.log("[dsh-desktop] 更新检查失败:", e.message));
+  // 启动 10 秒后检查（避免与后端启动抢资源）
+  setTimeout(() => {
+    if (updateChecked) return;
+    updateChecked = true;
+    autoUpdater.checkForUpdates().catch((e) => console.log("[dsh-desktop] 更新检查异常:", e.message));
+  }, 10000);
+}
+
 // ---------- 应用生命周期 ----------
 app.whenReady().then(async () => {
   let url;
+  setupAutoUpdate();
+  setTimeout(checkOfficialDshVersion, 15000); // 启动 15 秒后检查官方版本
   createSplash(); // 先显示启动画面，后端就绪后切换主窗口
   try {
     const b = await startBackend();
