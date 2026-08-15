@@ -21,15 +21,11 @@
 
 ## 📦 下载与使用
 
-### 方式一：免安装版（推荐）
+### 方式一：安装版（推荐）
 
-从 **Releases** 页面下载 `win-unpacked.zip`，解压后双击
-`DeepSeek Harness Desktop.exe` 即可使用。
-
-### 方式二：安装版
-
-从 **Releases** 页面下载 `DeepSeek Harness Desktop Setup <版本>.exe`，
-运行安装向导（可自选安装目录），安装后从桌面/开始菜单启动。
+从 **Releases** 页面下载 `DeepSeek Harness Desktop Setup <版本>.exe`
+（约 180MB，内置 DSH 后端与 Node 运行时），运行安装向导
+（可自选安装目录），安装后从桌面/开始菜单启动。
 
 ### 首次启动
 
