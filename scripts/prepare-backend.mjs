@@ -14,7 +14,8 @@ const BACKEND = join(ROOT, "resources", "backend");
 const DSH_VERSION = process.env.DSH_VERSION || "^0.1.0-rc.6";
 
 // ---- 解析架构参数 ----
-const archArg = process.argv.find((a) => a.startsWith("--arch=")) || process.argv[process.argv.indexOf("--arch") + 1];
+const archIdx = process.argv.indexOf("--arch");
+const archArg = process.argv.find((a) => a.startsWith("--arch=")) || (archIdx >= 0 ? process.argv[archIdx + 1] : undefined);
 const TARGET_ARCH = archArg || "x64"; // x64 | arm64
 if (!["x64", "arm64"].includes(TARGET_ARCH)) {
   console.error("ERROR: 不支持的架构: " + TARGET_ARCH + "（仅支持 x64 / arm64）");
@@ -99,11 +100,11 @@ if (existsSync(ptyPrebuilds)) {
   kept.push("node-pty/prebuilds/" + ARCH_TAG);
 }
 
-// @img/sharp: 只保留目标架构
+// @img/sharp: 只删除非目标架构的 sharp 原生二进制；纯 JS 包（如 @img/colour，sharp 运行必需）必须保留
 const imgDir = join(NM, "@img");
 if (existsSync(imgDir)) {
   for (const d of readdirSync(imgDir, { withFileTypes: true })) {
-    if (d.isDirectory() && !d.name.includes(ARCH_TAG)) {
+    if (d.isDirectory() && d.name.startsWith("sharp-") && !d.name.includes(ARCH_TAG)) {
       const sz = dirSize(join(imgDir, d.name));
       rmSync(join(imgDir, d.name), { recursive: true, force: true });
       removed.push("@img/" + d.name + " (" + sz + " MB)");
@@ -112,11 +113,11 @@ if (existsSync(imgDir)) {
   kept.push("@img/" + (readdirSync(imgDir, { withFileTypes: true }).filter((x) => x.isDirectory()).map((x) => x.name).join(", ")));
 }
 
-// @vscode/ripgrep: 只保留目标架构
+// @vscode/ripgrep: 只删除非目标架构的原生二进制；@vscode/ripgrep 元包（平台解析入口）必须保留
 const rgDir = join(NM, "@vscode");
 if (existsSync(rgDir)) {
   for (const d of readdirSync(rgDir, { withFileTypes: true })) {
-    if (d.isDirectory() && !d.name.includes(ARCH_TAG)) {
+    if (d.isDirectory() && d.name !== "ripgrep" && !d.name.includes(ARCH_TAG)) {
       const sz = dirSize(join(rgDir, d.name));
       rmSync(join(rgDir, d.name), { recursive: true, force: true });
       removed.push("@vscode/" + d.name + " (" + sz + " MB)");
