@@ -47,6 +47,16 @@
 3. 会话数据、设置与 Web 版完全一致（存储在 `~/.dsh`，由 DSH 后端统一管理）
 
 
+
+## 🤖 自动化（CI / 更新 / 便携版）
+
+- **GitHub Actions 自动构建**：push `v*` tag 即自动构建 x64 + arm64 安装包并创建草稿 Release
+  （`.github/workflows/build.yml`），发布前可人工检查
+- **自动更新**：应用集成 electron-updater，发现 GitHub 新版本时提示下载更新
+- **官方版本提醒**：启动后检查官方 `@deepseek-ai/dsh` 最新版，有新版时托盘提示
+- **便携版**：`npm run dist` 同时产出 `*-portable.exe`（免安装，双击即用）
+- **多语言**：启动画面与托盘菜单自动跟随系统语言（中/英）
+
 ## 📦 安装包体积优化
 
 - 安装包约 **163MB**（解压后约 600MB，含完整 DSH 后端 + Node 运行时）
