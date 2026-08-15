@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+release/
+resources/backend/
+
+# 日志与临时文件
+*.log
+*.7z
+wcs-extract/
+app-screenshot.png
+final-screenshot.png
+
+# IDE
+.idea/
+.vscode/
+
+# 系统文件
+Thumbs.db
+.DS_Store

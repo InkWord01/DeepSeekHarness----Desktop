@@ -1,0 +1,64 @@
+{
+  "name": "dsh-desktop",
+  "productName": "DeepSeek Harness Desktop",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 桌面客户端（Electron 壳，自动启动/复用 DSH 后端）",
+  "main": "src/main.js",
+  "license": "MIT",
+  "author": "DSH Desktop",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "postinstall": "electron-builder install-app-deps",
+    "prepare:backend": "node scripts/prepare-backend.mjs",
+    "dist": "npm run prepare:backend && electron-builder --win",
+    "dist:dir": "npm run prepare:backend && electron-builder --win --dir"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^25.0.0",
+    "@deepseek-ai/dsh": "^0.1.0-rc.6"
+  },
+  "build": {
+    "appId": "com.deepseek.harness.desktop",
+    "productName": "DeepSeek Harness Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/backend",
+        "to": "backend"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "DeepSeek Harness Desktop"
+    },
+    "afterPack": "scripts/afterPack.js"
+  }
+}
