@@ -31,9 +31,14 @@
 
 ### 方式一：安装版（推荐）
 
-从 **Releases** 页面下载 `DeepSeek Harness Desktop Setup <版本>.exe`
-（约 180MB，内置 DSH 后端与 Node 运行时），运行安装向导
-（可自选安装目录），安装后从桌面/开始菜单启动。
+从 **Releases** 页面按你的 CPU 架构下载对应安装包（约 163MB，内置 DSH 后端与 Node 运行时）：
+
+- `DeepSeek-Harness-Desktop-<版本>-x64.exe` — 绝大多数 Intel/AMD 电脑
+- `DeepSeek-Harness-Desktop-<版本>-arm64.exe` — ARM 设备（骁龙 Windows、Apple Silicon Windows 等）
+
+> 不确定架构？任务管理器 → 性能 → CPU 查看架构标识。
+
+运行安装向导（可自选安装目录），安装后从桌面/开始菜单启动。
 
 ### 首次启动
 
