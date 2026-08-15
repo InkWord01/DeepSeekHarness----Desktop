@@ -59,6 +59,11 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "DeepSeek Harness Desktop"
     },
-    "afterPack": "scripts/afterPack.js"
+    "afterPack": "scripts/afterPack.js",
+    "electronLanguages": [
+      "en-US",
+      "zh-CN"
+    ],
+    "compression": "maximum"
   }
 }
