@@ -255,14 +255,49 @@ ipcMain.handle("app-info", () => ({
   packaged: IS_PACKAGED
 }));
 
+// ---------- 启动加载窗口 ----------
+let splashWindow = null;
+function createSplash() {
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 260,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    center: true,
+    backgroundColor: "#0f1115",
+    show: false,
+    webPreferences: { contextIsolation: true, sandbox: true }
+  });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0f1115;color:#e5e7eb;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
+    .logo{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#2563eb,#10b981);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;animation:pulse 1.6s ease-in-out infinite}
+    @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.06);opacity:.85}}
+    .title{font-size:15px;font-weight:600}
+    .sub{font-size:12px;color:#9ca3af}
+    .bar{width:200px;height:4px;border-radius:2px;background:#1f2937;overflow:hidden}
+    .bar i{display:block;height:100%;width:40%;border-radius:2px;background:linear-gradient(90deg,#2563eb,#10b981);animation:slide 1.2s ease-in-out infinite}
+    @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+  </style></head><body>
+    <div class="logo">DSH</div>
+    <div class="title">DeepSeek Harness Desktop</div>
+    <div class="sub">正在启动 DSH 后端，请稍候…</div>
+    <div class="bar"><i></i></div>
+  </body></html>`;
+  splashWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+  splashWindow.once("ready-to-show", () => splashWindow.show());
+}
+
 // ---------- 应用生命周期 ----------
 app.whenReady().then(async () => {
   let url;
+  createSplash(); // 先显示启动画面，后端就绪后切换主窗口
   try {
     const b = await startBackend();
     url = `http://127.0.0.1:${b.port}/`;
   } catch (err) {
     console.error("[dsh-desktop] 启动失败:", err.message);
+    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
     const dialog = require("electron").dialog;
     await dialog.showMessageBox({
       type: "error",
@@ -274,6 +309,8 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
+  splashWindow = null;
   createWindow(url);
   createTray();
 });
