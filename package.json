@@ -12,7 +12,12 @@
     "postinstall": "electron-builder install-app-deps",
     "prepare:backend": "node scripts/prepare-backend.mjs",
     "dist": "npm run prepare:backend && electron-builder --win",
-    "dist:dir": "npm run prepare:backend && electron-builder --win --dir"
+    "dist:dir": "npm run prepare:backend && electron-builder --win --dir",
+    "prepare:backend:x64": "node scripts/prepare-backend.mjs --arch x64",
+    "prepare:backend:arm64": "node scripts/prepare-backend.mjs --arch arm64",
+    "dist:x64": "npm run prepare:backend:x64 && electron-builder --win nsis --x64",
+    "dist:arm64": "npm run prepare:backend:arm64 && electron-builder --win nsis --arm64",
+    "dist:all": "npm run dist:x64 && npm run dist:arm64"
   },
   "dependencies": {},
   "devDependencies": {
@@ -46,13 +51,15 @@
         {
           "target": "nsis",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
       "icon": "build/icon.ico",
       "signAndEditExecutable": false,
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": false,
+      "artifactName": "DeepSeek-Harness-Desktop-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
