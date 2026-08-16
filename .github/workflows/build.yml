@@ -45,9 +45,10 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ matrix.variant }}" -eq "lite") {
+            # 单引号：PowerShell 不做变量展开（${version} 等是 electron-builder 占位符，不是 PS 变量）
             npx electron-builder --win nsis --${{ matrix.arch }} --publish never `
-              --config.win.artifactName="DeepSeek-Harness-Desktop-${version}-${arch}-lite.${ext}" `
-              --config.portable.artifactName="DeepSeek-Harness-Desktop-${version}-${arch}-lite-portable.${ext}"
+              --config.win.artifactName='DeepSeek-Harness-Desktop-${version}-${arch}-lite.${ext}' `
+              --config.portable.artifactName='DeepSeek-Harness-Desktop-${version}-${arch}-lite-portable.${ext}'
           } else {
             npx electron-builder --win nsis --${{ matrix.arch }} --publish never
           }
@@ -71,6 +72,11 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Cleanup stray release (electron-builder auto-publish leftovers)
+        run: gh release delete "${{ github.ref_name }}" --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Draft Release
         uses: softprops/action-gh-release@v2
