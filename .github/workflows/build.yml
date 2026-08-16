@@ -45,11 +45,11 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ matrix.variant }}" -eq "lite") {
-            npx electron-builder --win nsis --${{ matrix.arch }} `
+            npx electron-builder --win nsis --${{ matrix.arch }} --publish never `
               --config.win.artifactName="DeepSeek-Harness-Desktop-${version}-${arch}-lite.${ext}" `
               --config.portable.artifactName="DeepSeek-Harness-Desktop-${version}-${arch}-lite-portable.${ext}"
           } else {
-            npx electron-builder --win nsis --${{ matrix.arch }}
+            npx electron-builder --win nsis --${{ matrix.arch }} --publish never
           }
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
