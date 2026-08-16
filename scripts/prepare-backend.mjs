@@ -11,7 +11,7 @@ import https from "node:https";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const BACKEND = join(ROOT, "resources", "backend");
-const DSH_VERSION = process.env.DSH_VERSION || "^0.1.0-rc.6";
+const DSH_VERSION = process.env.DSH_VERSION || "0.1.0-rc.6";
 
 // ---- 解析架构参数 ----
 const archIdx = process.argv.indexOf("--arch");
@@ -21,6 +21,7 @@ if (!["x64", "arm64"].includes(TARGET_ARCH)) {
   console.error("ERROR: 不支持的架构: " + TARGET_ARCH + "（仅支持 x64 / arm64）");
   process.exit(1);
 }
+const NO_NODE = process.argv.includes("--no-node"); // Lite 包：不捆绑 node.exe，运行时使用系统 Node
 const NODE_VERSION = process.versions.node;
 console.log("目标架构: " + TARGET_ARCH + "，Node 版本: " + NODE_VERSION);
 
@@ -134,8 +135,11 @@ if (removed.length > 0) {
   console.log("  无可移除项");
 }
 
-// ---- 3) node.exe（x64 复制系统，arm64 下载） ----
+// ---- 3) node.exe（x64 复制系统，arm64 下载；--no-node 时跳过） ----
 console.log("");
+if (NO_NODE) {
+  console.log("[3/4] 跳过 node.exe（--no-node：Lite 包，运行时使用系统 Node）");
+} else {
 console.log("[3/4] 准备 node.exe (" + TARGET_ARCH + ") ...");
 const targetNode = join(BACKEND, "node.exe");
 if (TARGET_ARCH === "x64") {
@@ -156,11 +160,13 @@ if (TARGET_ARCH === "x64") {
   rmSync(zipPath, { force: true });
   console.log("已安装 arm64 node.exe ->", targetNode, "(" + (statSync(targetNode).size / 1e6).toFixed(1) + " MB)");
 }
+} // end node.exe step
 
 // ---- 4) 写元信息与校验 ----
 writeFileSync(join(BACKEND, "backend.info.json"), JSON.stringify({
   dsh: DSH_VERSION,
-  node: NODE_VERSION,
+  node: NO_NODE ? "system" : NODE_VERSION, // Lite 包运行时为系统 Node
+  nodeMode: NO_NODE ? "system" : "bundled",
   arch: TARGET_ARCH,
   preparedAt: new Date().toISOString()
 }, null, 2));
@@ -172,6 +178,9 @@ if (!existsSync(dshBin)) {
 }
 console.log("");
 console.log("[4/4] 完成 (" + TARGET_ARCH + ")");
-console.log("  后端入口:", dshBin);
-console.log("  node.exe:", targetNode);
+if (NO_NODE) {
+  console.log("  node.exe: (未捆绑 — Lite 包，使用系统 Node)");
+} else {
+  console.log("  node.exe:", targetNode);
+}
 console.log("  元信息:", join(BACKEND, "backend.info.json"));

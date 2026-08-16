@@ -32,12 +32,20 @@ Package [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH
 
 ### Installer (Recommended)
 
-Download the installer matching your CPU architecture from the **Releases** page (~163MB, includes the DSH backend and Node runtime):
+Download the installer matching your CPU architecture from the **Releases** page (includes the DSH backend):
+
+**Full build (recommended, zero prerequisites)** (~163MB, bundles the Node runtime):
 
 - `DeepSeek-Harness-Desktop-<version>-x64.exe` — most Intel/AMD PCs
 - `DeepSeek-Harness-Desktop-<version>-arm64.exe` — ARM devices (Snapdragon Windows, Apple Silicon Windows, etc.)
 
+**Lite build (optional, when Node.js ≥ 22 is already installed)** (~120MB, no bundled Node; uses the system Node at runtime):
+
+- `DeepSeek-Harness-Desktop-<version>-x64-lite.exe`
+- `DeepSeek-Harness-Desktop-<version>-arm64-lite.exe`
+
 > Not sure about your architecture? Task Manager → Performance → CPU shows it.
+> Don't know whether Node.js is installed? Just pick the full build.
 
 Run the setup wizard (custom install directory supported), then launch from the desktop/Start menu.
 

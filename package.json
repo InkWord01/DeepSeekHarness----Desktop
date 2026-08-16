@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DeepSeek Harness Desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "DeepSeek Harness 桌面客户端（Electron 壳，自动启动/复用 DSH 后端）",
   "main": "src/main.js",
   "license": "MIT",
@@ -11,20 +11,25 @@
     "dev": "electron . --dev",
     "postinstall": "electron-builder install-app-deps",
     "prepare:backend": "node scripts/prepare-backend.mjs",
-    "dist": "npm run prepare:backend && electron-builder --win",
-    "dist:dir": "npm run prepare:backend && electron-builder --win --dir",
+    "dist": "npm run prepare:backend:x64 && electron-builder --win --x64",
+    "dist:dir": "npm run prepare:backend:x64 && electron-builder --win --dir --x64",
     "prepare:backend:x64": "node scripts/prepare-backend.mjs --arch x64",
     "prepare:backend:arm64": "node scripts/prepare-backend.mjs --arch arm64",
     "dist:x64": "npm run prepare:backend:x64 && electron-builder --win nsis --x64",
     "dist:arm64": "npm run prepare:backend:arm64 && electron-builder --win nsis --arm64",
     "dist:all": "npm run dist:x64 && npm run dist:arm64",
-    "dist:release": "npm run prepare:backend:x64 && electron-builder --win nsis --x64 --publish never"
+    "dist:release": "npm run prepare:backend:x64 && electron-builder --win nsis --x64 --publish never",
+    "prepare:backend:lite": "node scripts/prepare-backend.mjs --no-node",
+    "prepare:backend:lite:x64": "node scripts/prepare-backend.mjs --no-node --arch x64",
+    "prepare:backend:lite:arm64": "node scripts/prepare-backend.mjs --no-node --arch arm64",
+    "dist:lite": "npm run prepare:backend:lite:x64 && electron-builder --win nsis --x64 --config.win.artifactName=DeepSeek-Harness-Desktop-${version}-${arch}-lite.${ext} --config.portable.artifactName=DeepSeek-Harness-Desktop-${version}-${arch}-lite-portable.${ext}",
+    "dist:lite:arm64": "npm run prepare:backend:lite:arm64 && electron-builder --win nsis --arm64 --config.win.artifactName=DeepSeek-Harness-Desktop-${version}-${arch}-lite.${ext} --config.portable.artifactName=DeepSeek-Harness-Desktop-${version}-${arch}-lite-portable.${ext}"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
     "electron": "^43.0.0",
     "electron-builder": "^25.0.0"
   },

@@ -1,0 +1,51 @@
+/* dsh-desktop 页面适配样式（由 main.js 读取注入，__TB_H__ 运行时替换为标题栏高度） */
+body > div:first-of-type { padding-top: __TB_H__px !important; box-sizing: border-box !important; }
+/* ---- 自绘标题栏 ---- */
+#dsh-titlebar { position: fixed; top: 0; left: 0; right: 0; height: __TB_H__px; z-index: 2147483646; display: flex; align-items: center; justify-content: space-between; -webkit-app-region: drag; user-select: none; }
+#dsh-titlebar .dsh-tb-title { padding-left: 14px; font-size: 12px; letter-spacing: .2px; opacity: .85; display: flex; align-items: center; gap: 7px; min-width: 0; pointer-events: none; }
+#dsh-titlebar .dsh-tb-title .dsh-tb-seg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+#dsh-titlebar .dsh-tb-title .dsh-tb-sep { opacity: .45; flex: none; }
+#dsh-titlebar .dsh-tb-controls { display: flex; height: 100%; -webkit-app-region: no-drag; }
+#dsh-titlebar .dsh-tb-btn { width: 46px; height: 100%; border: none; margin: 0; padding: 0; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; cursor: default; outline: none; }
+#dsh-titlebar .dsh-tb-btn:hover { background: rgba(128,128,128,.22); }
+#dsh-titlebar .dsh-tb-btn:active { background: rgba(128,128,128,.34); }
+#dsh-titlebar .dsh-tb-btn svg { width: 14px; height: 14px; }
+/* ---- 收起模式侧边栏底部按钮修复 ---- */
+[class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] { gap: 0 !important; align-items: center !important; }
+[class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] button,
+[class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="us-nav"] {
+  width: 24px !important; height: 24px !important;
+  min-width: 24px !important; min-height: 24px !important;
+  margin: 0 auto !important; padding: 0 !important;
+  flex: 0 0 24px !important;
+}
+[class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="footerActions"],
+[class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="entryRow"] {
+  flex-direction: column !important; width: 24px !important;
+  margin: 0 !important; padding: 0 !important; gap: 0 !important;
+}
+[class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="us-nav"] { margin-left: 0 !important; }
+/* 第三方侧边栏的悬浮收起/展开按钮（top≈3px）会与自绘标题栏重叠：下移到标题栏下方 */
+[class*="toggleCluster"], [class*="ToggleCluster"], [class*="floating-expand"] { top: calc(__TB_H__px + 4px) !important; }
+[class*="toggleCluster"] svg, [class*="ToggleCluster"] svg { width: 14px !important; height: 14px !important; }
+/* 右侧面板容器（CSS Modules 统一 _panel 后缀）：去掉左分隔线与阴影，消除与主内容的"隔阂" */
+[class*="_panel"], [class*="_panel "] { border-left: none !important; box-shadow: none !important; }
+/* 设置弹窗：宽度钳制 + 主区居中偏移，全部走 CSS 变量 + !important（inline style 会被 React 重渲染覆盖） */
+[class*="VOzbGW_panel"] {
+  max-width: calc(var(--dsh-main-w, 1400px) - 48px) !important;
+  transform: translateX(var(--dsh-main-offset, 0px)) !important;
+  transition: max-width .22s ease, transform .22s ease !important;
+}
+/* 设置弹窗打开时：右侧面板临时让路（弹窗全窗居中，不被遮挡/挤偏）；关闭后自动恢复 */
+html.dsh-settings-open [class*="_panel"]:not([class*="VOzbGW_panel"]),
+html.dsh-settings-open [class*="toggleCluster"],
+html.dsh-settings-open [class*="floating-expand"] { display: none !important; }
+/* 小窗口（≤1180px）时隐藏右侧面板：避免面板挤压主内容导致布局错乱 */
+@media (max-width: 1180px) {
+  [class*="_panel"]:not([class*="VOzbGW_panel"]) { display: none !important; }
+  [class*="toggleCluster"], [class*="floating-expand"] { display: none !important; }
+}
+/* 使用统计面板：彻底去除毛玻璃（禁 blur + 完全不透明背景；JS 会按 body 背景色覆盖 inline 样式） */
+[class*="us-shell"], [class*="us-shell"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-blend-mode: normal !important; }
+/* 背景由 preload 按 body 背景色覆盖 inline 样式（跟随主题/皮肤）；此处不设 !important 以免压过深色主题 */
+[class*="us-shell"] [class*="us-top"], [class*="us-shell"] [class*="us-scroll"] { background: transparent !important; }

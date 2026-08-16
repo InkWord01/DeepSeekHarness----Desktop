@@ -76,15 +76,36 @@ function syncSessionTitle() {
     const h = header.getBoundingClientRect();
     const hidden = header.classList.contains("wSkVaW_headerHidden") || h.height === 0;
     if (!hidden) {
-      // 会话标题：面包屑最后一个（crumbCurrent），退化为 h1/h2/title
-      const crumb = header.querySelector("[class*=crumbCurrent], [class*=crumb]:last-child");
-      title = cleanSegText(crumb) || cleanSegText(header.querySelector("h1, h2, [class*=title], [class*=Title], [class*=sessionName]"));
-      // 模式：agent preset / mode 按钮（title 属性优先）
-      const modeBtn = header.querySelector("[class*=preset], [class*=Preset], [class*=agentPreset], [class*=mode]");
+      // 会话标题：面包屑"叶子"段（crumbCurrent 优先；退化取最后一个不含子 crumb 的段，避免匹配 NAV 容器）
+      const crumbEls = header.querySelectorAll("[class*=crumb], [class*=Crumb]");
+      let crumb = null;
+      for (const el of crumbEls) {
+        const cls = String(el.className);
+        if (cls.includes("crumbCurrent") || /crumb.*current|current.*crumb/i.test(cls)) { crumb = el; break; }
+      }
+      if (!crumb) {
+        for (const el of crumbEls) {
+          if (el.querySelector("[class*=crumb], [class*=Crumb]")) continue; // 容器（含子 crumb）跳过
+          const t = cleanSegText(el);
+          if (t) crumb = el;
+        }
+      }
+      title = cleanSegText(crumb) || cleanSegText(header.querySelector("h1, h2, [class*=sessionName]"));
+      // 模式：preset 按钮优先；其次 [class*=mode] 且排除 model 类（[class*=mode] 会误匹配 model）
+      const modeBtn = header.querySelector("[class*=preset], [class*=Preset], [class*=agentPreset]");
       if (modeBtn) mode = cleanSegText(modeBtn);
-      // 模型：模型选择器按钮
-      const modelBtn = header.querySelector("[class*=model], [class*=Model]");
-      if (modelBtn) model = cleanSegText(modelBtn);
+      if (!mode) {
+        for (const el of header.querySelectorAll("[class*=mode]")) {
+          if (/[mM]odel/.test(String(el.className))) continue;
+          const t = cleanSegText(el);
+          if (t) { mode = t; break; }
+        }
+      }
+      // 模型：模型选择器按钮（title/文本非空）
+      for (const el of header.querySelectorAll("[class*=model], [class*=Model]")) {
+        const t = cleanSegText(el);
+        if (t) { model = t; break; }
+      }
     }
   }
   if (!title) title = "DeepSeek Harness Desktop";

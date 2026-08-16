@@ -14,7 +14,15 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x64, arm64]
+        include:
+          - arch: x64
+            variant: full
+          - arch: arm64
+            variant: full
+          - arch: x64
+            variant: lite
+          - arch: arm64
+            variant: lite
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,13 +36,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prepare backend (${{ matrix.arch }})
-        run: node scripts/prepare-backend.mjs --arch ${{ matrix.arch }}
+      - name: Prepare backend (${{ matrix.arch }} ${{ matrix.variant }})
+        run: node scripts/prepare-backend.mjs --arch ${{ matrix.arch }}${{ matrix.variant == 'lite' && ' --no-node' || '' }}
         env:
-          DSH_VERSION: ^0.1.0-rc.6
+          DSH_VERSION: 0.1.0-rc.6
 
-      - name: Build installer (${{ matrix.arch }})
-        run: npx electron-builder --win nsis --${{ matrix.arch }}
+      - name: Build installer (${{ matrix.arch }} ${{ matrix.variant }})
+        shell: pwsh
+        run: |
+          if ("${{ matrix.variant }}" -eq "lite") {
+            npx electron-builder --win nsis --${{ matrix.arch }} `
+              --config.win.artifactName="DeepSeek-Harness-Desktop-${version}-${arch}-lite.${ext}" `
+              --config.portable.artifactName="DeepSeek-Harness-Desktop-${version}-${arch}-lite-portable.${ext}"
+          } else {
+            npx electron-builder --win nsis --${{ matrix.arch }}
+          }
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,7 +58,7 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: installer-${{ matrix.arch }}
+          name: installer-${{ matrix.arch }}-${{ matrix.variant }}
           path: release/*.exe
           if-no-files-found: error
 

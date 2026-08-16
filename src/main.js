@@ -46,6 +46,7 @@ const I18N = {
     closeDetail: "最小化到托盘：应用与 DSH 后端继续在后台运行；直接退出：停止后端并完全退出应用。",
     btnTray: "最小化到托盘",
     btnQuit: "直接退出",
+    btnCancel: "取消",
     closeRemember: "记住我的选择，下次不再询问",
     trayCloseBehavior: "关闭窗口时",
     trayCloseAsk: "每次询问",
@@ -74,6 +75,7 @@ const I18N = {
     closeDetail: "Minimize to tray: app and DSH backend keep running in the background. Quit: stop the backend and exit completely.",
     btnTray: "Minimize to Tray",
     btnQuit: "Quit",
+    btnCancel: "Cancel",
     closeRemember: "Remember my choice and don't ask again",
     trayCloseBehavior: "On window close",
     trayCloseAsk: "Ask every time",
@@ -128,6 +130,28 @@ function resolveBackendPaths() {
   };
 }
 
+// ---------- Node 运行时解析（支持 Lite 包：无捆绑 node.exe 时回退系统 Node） ----------
+const MIN_NODE_MAJOR = 22; // dsh 动态加载 TS 插件依赖 strip-type 特性（Node 22.6+），捆绑版本为 23.x
+
+function resolveNodeBin(paths) {
+  // 1) 捆绑的 node.exe（完整版）
+  if (fs.existsSync(paths.node)) return paths.node;
+  // 2) 显式指定（环境变量）
+  if (process.env.DSH_DESKTOP_NODE) return process.env.DSH_DESKTOP_NODE;
+  // 3) 系统 PATH 上的 node（Lite 包）
+  return process.platform === "win32" ? "node.exe" : "node";
+}
+
+function checkNodeVersion(nodeBin) {
+  return new Promise((resolve) => {
+    execFile(nodeBin, ["--version"], { timeout: 3000, windowsHide: true }, (err, stdout) => {
+      if (err) return resolve(null);
+      const m = /v(\d+)\.(\d+)\.(\d+)/.exec(String(stdout || "").trim());
+      resolve(m ? { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), raw: String(stdout).trim() } : null);
+    });
+  });
+}
+
 // ---------- HTTP 探测（支持 http/https） ----------
 const https = require("node:https");
 function httpGet(url, timeoutMs = 1500) {
@@ -175,23 +199,23 @@ async function waitForBackend(port, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const res = await httpGet(`http://127.0.0.1:${port}/`, 1200);
-    if (res && res.status === 200 && res.body.includes(DSH_BOOT_MARKER)) return true;
-    // 页面可能在构建中，先等端口通
-    if (res && res.status !== undefined) return true;
+    // 只认 200（后端完全就绪）；5xx/4xx/连接失败都继续等待
+    if (res && res.status === 200) return true;
     await new Promise((r) => setTimeout(r, 800));
   }
   return false;
 }
 
 async function probeExistingDSH() {
-  const res = await httpGet(`http://127.0.0.1:${DEFAULT_PORT}/`, 1200);
-  if (res && res.status === 200) {
-    const looksLikeDSH = res.body.includes(DSH_BOOT_MARKER);
-    if (looksLikeDSH) return DEFAULT_PORT;
-    // 端口有服务但不是 DSH —— 不能复用
-    return null;
+  // 健康校验：连续探测（实例可能正处于启动/退出中），只认 200 + 引导标记
+  for (let i = 0; i < 3; i++) {
+    const res = await httpGet(`http://127.0.0.1:${DEFAULT_PORT}/`, 1200);
+    if (res && res.status === 200 && res.body.includes(DSH_BOOT_MARKER)) {
+      return DEFAULT_PORT;
+    }
+    await new Promise((r) => setTimeout(r, 350));
   }
-  return null;
+  return null; // 无服务 / 服务非 DSH / 一直未就绪 —— 都不能复用
 }
 
 async function startBackend() {
@@ -200,23 +224,38 @@ async function startBackend() {
     throw new Error(`未找到 DSH 后端入口: ${paths.dshBin}\n请先运行: npm install（开发模式）或重新安装应用（打包模式）`);
   }
 
+  // 解析 Node 运行时（完整版用捆绑 node.exe；Lite 版回退系统 Node）并校验版本
+  const nodeBin = resolveNodeBin(paths);
+  const nodeVer = await checkNodeVersion(nodeBin);
+  if (!nodeVer) {
+    throw new Error("未检测到可用的 Node.js 运行时。\n请安装 Node.js " + MIN_NODE_MAJOR + "+（https://nodejs.org），或下载包含 Node 的完整版安装包。");
+  }
+  if (nodeVer.major < MIN_NODE_MAJOR) {
+    throw new Error("当前 Node.js 版本过低（" + nodeVer.raw + "），需要 Node.js " + MIN_NODE_MAJOR + "+。\n请升级 Node.js，或下载包含 Node 的完整版安装包。");
+  }
+  console.log("[dsh-desktop] Node 运行时: " + (fs.existsSync(paths.node) ? "bundled " : "system ") + nodeVer.raw);
+
   // 1) 先探测 3080 是否已有 DSH 实例在跑（复用，避免双后端写同一 DSH_HOME）
   const existing = await probeExistingDSH();
   if (existing) {
     backend = { mode: "reuse", port: existing };
     console.log(`[dsh-desktop] 复用已有 DSH 实例: http://127.0.0.1:${existing}`);
+    startReuseWatchdog(); // C5: 复用的实例失联时自动切换为自启后端
     return backend;
   }
 
   // 2) 自己启动一个后端
   const port = await findFreePort(DEFAULT_PORT);
+  if (!port) {
+    throw new Error(`端口 ${DEFAULT_PORT}~${DEFAULT_PORT + 199} 全部被占用，无法启动 DSH 后端。\n请关闭占用这些端口的程序后重试。`);
+  }
   const logDir = path.join(app.getPath("userData"), "logs");
   fs.mkdirSync(logDir, { recursive: true });
   const logPath = path.join(logDir, "backend.log");
   const logStream = fs.createWriteStream(logPath, { flags: "a" });
   logStream.write(`\n===== ${new Date().toISOString()} dsh backend start (port ${port}) =====\n`);
 
-  const child = spawn(paths.node, [paths.dshBin, "web", "--host", "127.0.0.1", "--port", String(port)], {
+  const child = spawn(nodeBin, [paths.dshBin, "web", "--host", "127.0.0.1", "--port", String(port)], {
     cwd: os.homedir(),
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -228,15 +267,7 @@ async function startBackend() {
   backend = { mode: "spawned", port, child, logPath, logStream };
   console.log(`[dsh-desktop] 启动 DSH 后端 (pid=${child.pid}) 于端口 ${port}，日志: ${logPath}`);
 
-  child.on("exit", (code, signal) => {
-    console.log(`[dsh-desktop] 后端进程退出 code=${code} signal=${signal}`);
-    if (backend && backend.mode === "spawned" && !isQuitting) {
-      // 后端意外退出：尝试通知渲染进程
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("backend-status", { ok: false, port: backend.port });
-      }
-    }
-  });
+  child.on("exit", (code, signal) => onBackendExit(child, code, signal));
 
   const ready = await waitForBackend(port);
   if (!ready) {
@@ -252,8 +283,115 @@ async function startBackend() {
   return backend;
 }
 
+
+// ---- C3: 后端意外退出自动重启（指数退避 1s/2s/4s…封顶 30s，成功后自动恢复页面） ----
+let backendRestartTimer = null;
+let backendRestarting = false; // 防止重启过程中再次触发 spawn（竞态）
+
+// C5: 复用实例健康看护 —— 失联（探测失败）即切换为自启后端并走自动重启
+let reuseWatchdog = null;
+function startReuseWatchdog() {
+  stopReuseWatchdog();
+  reuseWatchdog = setInterval(async () => {
+    if (isQuitting || !backend || backend.mode !== "reuse") return;
+    const res = await httpGet(`http://127.0.0.1:${backend.port}/`, 1200);
+    const healthy = res && res.status === 200 && res.body.includes(DSH_BOOT_MARKER);
+    if (healthy) return;
+    console.log("[dsh-desktop] 复用的 DSH 实例失联，切换为自启后端");
+    backend.mode = "spawned"; // 让自动重启路径接管（由我们 spawn 新进程）
+    backendReady = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("backend-status", { ok: false, port: backend.port });
+    }
+    scheduleBackendRestart(1);
+  }, 5000);
+}
+function stopReuseWatchdog() {
+  if (reuseWatchdog) { clearInterval(reuseWatchdog); reuseWatchdog = null; }
+}
+
+function onBackendExit(child, code, signal) {
+  console.log(`[dsh-desktop] 后端进程退出 code=${code} signal=${signal}`);
+  // 只处理"当前活跃后端"的退出（重启成功后旧进程的 exit 事件不再触发恢复）
+  if (isQuitting || !backend || backend.mode !== "spawned" || backend.child !== child) return;
+  backendReady = false;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("backend-status", { ok: false, port: backend.port });
+  }
+  scheduleBackendRestart(1);
+}
+
+function scheduleBackendRestart(attempt) {
+  if (isQuitting || !backend || backend.mode !== "spawned") return;
+  const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
+  console.log(`[dsh-desktop] 后端将在 ${(delay / 1000).toFixed(0)}s 后重启（第 ${attempt} 次尝试）`);
+  backendRestartTimer = setTimeout(() => doRestartBackend(attempt), delay);
+}
+
+async function doRestartBackend(attempt) {
+  backendRestartTimer = null;
+  if (backendRestarting) return; // 已有重启在进行（旧子进程退出事件可能在等待期间再次触发）
+  backendRestarting = true;
+  stopReuseWatchdog();
+  if (isQuitting || !backend || backend.mode !== "spawned") { backendRestarting = false; return; }
+  const oldPort = backend.port;
+  try {
+    // 旧进程可能还残留（未退干净）：先杀掉再起新进程，避免双后端争用 DSH_HOME
+    try { if (backend.child) backend.child.kill(); } catch {}
+    const port = await findFreePort(oldPort);
+    if (!port) throw new Error("端口全部被占用");
+    const paths = resolveBackendPaths();
+    const nodeBin = resolveNodeBin(paths);
+    const logDir = path.join(app.getPath("userData"), "logs");
+    fs.mkdirSync(logDir, { recursive: true });
+    const logPath = path.join(logDir, "backend.log");
+    const logStream = fs.createWriteStream(logPath, { flags: "a" });
+    logStream.write(`\n===== ${new Date().toISOString()} dsh backend RESTART (port ${port}, attempt ${attempt}) =====\n`);
+    const child = spawn(nodeBin, [paths.dshBin, "web", "--host", "127.0.0.1", "--port", String(port)], {
+      cwd: os.homedir(),
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env }
+    });
+    child.stdout.pipe(logStream);
+    child.stderr.pipe(logStream);
+    backend.child = child;
+    backend.port = port;
+    backend.logStream = logStream;
+    console.log(`[dsh-desktop] 重启后端 (pid=${child.pid}) 于端口 ${port}`);
+    child.on("exit", (code, signal) => onBackendExit(child, code, signal));
+    const ready = await waitForBackend(port, 30000);
+    if (!ready) throw new Error("后端未能在 30s 内就绪");
+    backendReady = true;
+    console.log(`[dsh-desktop] 后端重启成功: http://127.0.0.1:${port}`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("backend-status", { ok: true, port });
+      // 无论端口是否变化都重载页面：前端的 RPC/WS 连接已随旧进程断开，重载重连（会话状态在 DSH_HOME 持久化）
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed() && backend && backend.port === port) {
+          mainWindow.loadURL(`http://127.0.0.1:${port}/`);
+        }
+      }, 600);
+    }
+  } catch (err) {
+    console.error("[dsh-desktop] 后端重启失败:", err.message);
+    if (attempt >= 10) {
+      console.error("[dsh-desktop] 连续 10 次重启失败，停止自动恢复（请退出应用后重试）");
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("backend-status", { ok: false, fatal: true, port: backend.port });
+      }
+      return;
+    }
+    scheduleBackendRestart(attempt + 1);
+  } finally {
+    backendRestarting = false;
+  }
+}
+
 async function stopBackend() {
   isQuitting = true;
+  stopReuseWatchdog();
+  if (backendRestartTimer) { clearTimeout(backendRestartTimer); backendRestartTimer = null; }
   if (backend && backend.mode === "spawned") {
     const pid = backend.child && backend.child.pid;
     console.log(`[dsh-desktop] 停止自启后端 pid=${pid}`);
@@ -307,9 +445,9 @@ async function handleWindowClose(e) {
       title: T.closeTitle,
       message: T.closeMessage,
       detail: T.closeDetail,
-      buttons: [T.btnTray, T.btnQuit],
+      buttons: [T.btnTray, T.btnQuit, T.btnCancel],
       defaultId: 0,
-      cancelId: 1,
+      cancelId: 2, // Esc/取消 = 不做任何事（不隐藏、不退出、不保存偏好）
       noLink: true,
       checkboxLabel: T.closeRemember,
       checkboxChecked: false
@@ -318,6 +456,7 @@ async function handleWindowClose(e) {
     hideToTray(); // 对话框异常时保守处理：最小化到托盘
     return;
   }
+  if (result.response === 2) return; // 用户取消关闭：窗口保持原样
   if (result.checkboxChecked) saveClosePref(result.response === 0 ? "tray" : "quit");
   if (result.response === 0) hideToTray();
   else requestQuit();
@@ -365,120 +504,28 @@ function createWindow(url) {
 
   // 关闭时按偏好处理（询问 / 托盘 / 退出）
   mainWindow.on("close", handleWindowClose);
-  // 页面加载后同步一次主题到标题栏；preload 观察器负责后续变化
+  // 最大化状态推送：自绘标题栏更新图标（只挂一次，reload 不会累积）
+  mainWindow.on("maximize", () => { if (!mainWindow.isDestroyed()) mainWindow.webContents.send("win-maximized-changed", true); });
+  mainWindow.on("unmaximize", () => { if (!mainWindow.isDestroyed()) mainWindow.webContents.send("win-maximized-changed", false); });
+  // 页面加载后注入桌面适配资源（独立文件，可单独语法检查，无模板字符串转义陷阱）
+  const injectFile = (name) => fs.readFileSync(path.join(__dirname, "inject", name), "utf8");
   mainWindow.webContents.on("did-finish-load", () => {
-    // 1) 标题栏安全区：DSH 页面顶部让出 TITLEBAR_HEIGHT（内容不被自绘标题栏遮挡）
-    // 2) 自绘标题栏样式（颜色由 preload 观察器实时同步页面背景）
-    // 3) 收起模式（rail）下底部按钮区：缩小按钮、拉直间距，避免插件按钮互相挤压/溢出
+    // 1) 样式（标题栏安全区 / 自绘标题栏 / 面板与设置弹窗适配 / 侧边栏修复）
     try {
-      mainWindow.webContents.insertCSS(`
-      body > div:first-of-type { padding-top: ${TITLEBAR_HEIGHT}px !important; box-sizing: border-box !important; }
-      /* ---- 自绘标题栏 ---- */
-      #dsh-titlebar { position: fixed; top: 0; left: 0; right: 0; height: ${TITLEBAR_HEIGHT}px; z-index: 2147483646; display: flex; align-items: center; justify-content: space-between; -webkit-app-region: drag; user-select: none; }
-      #dsh-titlebar .dsh-tb-title { padding-left: 14px; font-size: 12px; letter-spacing: .2px; opacity: .85; display: flex; align-items: center; gap: 7px; min-width: 0; pointer-events: none; }
-      #dsh-titlebar .dsh-tb-title .dsh-tb-seg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
-      #dsh-titlebar .dsh-tb-title .dsh-tb-sep { opacity: .45; flex: none; }
-      #dsh-titlebar .dsh-tb-controls { display: flex; height: 100%; -webkit-app-region: no-drag; }
-      #dsh-titlebar .dsh-tb-btn { width: 46px; height: 100%; border: none; margin: 0; padding: 0; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; cursor: default; outline: none; }
-      #dsh-titlebar .dsh-tb-btn:hover { background: rgba(128,128,128,.22); }
-      #dsh-titlebar .dsh-tb-btn:active { background: rgba(128,128,128,.34); }
-      #dsh-titlebar .dsh-tb-btn svg { width: 14px; height: 14px; }
-      /* ---- 收起模式侧边栏底部按钮修复 ---- */
-      [class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] { gap: 0 !important; align-items: center !important; }
-      [class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] button,
-      [class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="us-nav"] {
-        width: 24px !important; height: 24px !important;
-        min-width: 24px !important; min-height: 24px !important;
-        margin: 0 auto !important; padding: 0 !important;
-        flex: 0 0 24px !important;
-      }
-      [class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="footerActions"],
-      [class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="entryRow"] {
-        flex-direction: column !important; width: 24px !important;
-        margin: 0 !important; padding: 0 !important; gap: 0 !important;
-      }
-      [class*="hHd-Xa_collapsed"] [class*="hHd-Xa_footArea"] [class*="us-nav"] { margin-left: 0 !important; }
-      /* 第三方侧边栏的悬浮收起/展开按钮（top≈3px）会与自绘标题栏重叠：下移到标题栏下方 */
-      [class*="toggleCluster"], [class*="ToggleCluster"], [class*="floating-expand"] { top: 44px !important; }
-      [class*="toggleCluster"] svg, [class*="ToggleCluster"] svg { width: 14px !important; height: 14px !important; }
-      /* 右侧面板容器（CSS Modules 统一 _panel 后缀）：去掉左分隔线与阴影，消除与主内容的"隔阂" */
-      [class$="_panel"], [class*="_panel "] { border-left: none !important; box-shadow: none !important; }
-      /* 使用统计面板：彻底去除毛玻璃（禁 blur + 完全不透明背景；JS 会按 body 背景色覆盖 inline 样式） */
-      [class*="us-shell"], [class*="us-shell"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-blend-mode: normal !important; }
-      [class*="us-shell"] { background-color: rgb(247, 248, 250) !important; }
-      [class*="us-shell"] [class*="us-top"], [class*="us-shell"] [class*="us-scroll"] { background: transparent !important; }
-      `);
+      mainWindow.webContents.insertCSS(injectFile("styles.css").replaceAll("__TB_H__", String(TITLEBAR_HEIGHT)));
     } catch {}
-    // 注入自绘标题栏 DOM + 按钮事件
-    mainWindow.webContents.executeJavaScript(`(() => {
-      if (document.getElementById('dsh-titlebar')) return;
-      const NS = 'http://www.w3.org/2000/svg';
-      const icon = (d) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.2'); const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); s.appendChild(p); return s; };
-      const tb = document.createElement('div');
-      tb.id = 'dsh-titlebar';
-      const title = document.createElement('div');
-      title.className = 'dsh-tb-title';
-      title.innerHTML = '<span class="dsh-tb-seg" data-part="title"></span><span class="dsh-tb-sep" data-part="sep1">·</span><span class="dsh-tb-seg" data-part="mode" style="max-width:180px"></span><span class="dsh-tb-sep" data-part="sep2">·</span><span class="dsh-tb-seg" data-part="model" style="max-width:200px"></span>';
-      const ctrl = document.createElement('div');
-      ctrl.className = 'dsh-tb-controls';
-      const mk = (act, d, tip) => { const b = document.createElement('button'); b.className = 'dsh-tb-btn'; b.title = tip; b.appendChild(icon(d)); b.dataset.act = act; ctrl.appendChild(b); return b; };
-      const btnMin = mk('min', 'M2 8h12', '最小化');
-      const btnMax = mk('max', 'M3 3h10v10H3z', '最大化');
-      const btnClose = mk('close', 'M4 4l8 8M12 4l-8 8', '关闭');
-      tb.appendChild(title); tb.appendChild(ctrl);
-      document.body.appendChild(tb);
-      // 初始背景：直接读取 body 背景色（preload 观察器随后负责实时更新）
-      const tbBg = getComputedStyle(document.body).backgroundColor;
-      if (tbBg) tb.style.background = tbBg;
-      btnMin.addEventListener('click', () => window.dshDesktop && window.dshDesktop.windowControls.minimize());
-      btnMax.addEventListener('click', async () => { if (window.dshDesktop) { const m = await window.dshDesktop.windowControls.toggleMaximize(); window.dispatchEvent(new CustomEvent('dsh-max-changed', { detail: { maximized: m } })); } });
-      btnClose.addEventListener('click', () => window.dshDesktop && window.dshDesktop.windowControls.close());
-    })()`).catch((err) => console.log("[TB-INJECT-ERR]", err.message));
-    // 贴顶的 fixed 大面板（第三方侧边栏/面板插件）下移标题栏高度，保持与主内容水平对齐
-    mainWindow.webContents.executeJavaScript(`(() => {
-      const H = ${TITLEBAR_HEIGHT};
-      function fixPanels() {
-        // 注意：此处位于模板字符串中，禁用正则字面量（转义会被 JS 吞掉导致 SyntaxError）
-        var bgRaw = String(getComputedStyle(document.body).backgroundColor || '');
-        var bgParts = bgRaw.replace('rgba(', '').replace('rgb(', '').replace(')', '').split(',');
-        var solid = bgParts.length >= 3 ? 'rgb(' + bgParts[0].trim() + ',' + bgParts[1].trim() + ',' + bgParts[2].trim() + ')' : '';
-        for (const el of document.querySelectorAll('body *')) {
-          const cs = getComputedStyle(el);
-          if (cs.position !== 'fixed') continue;
-          const r = el.getBoundingClientRect();
-          if (r.width < 150 || r.width > 800 || r.height < 200 || r.bottom > window.innerHeight + 10) continue; // 面板形态：宽 150-800、高 ≥200
-          const isRightEdge = r.right >= window.innerWidth - 10;
-          const isTopEdge = r.top <= 10;
-          // 右侧贴边面板：去掉左边缘分隔线/阴影 + 背景统一为主内容背景（消除"隔阂"缝隙）
-          if (isRightEdge) {
-            el.style.borderLeft = 'none';
-            el.style.boxShadow = 'none';
-            if (solid) el.style.background = solid;
-          }
-          // 贴顶面板：下移标题栏高度（幂等：插件若重置 top，下次运行会再次下移）
-          if (isTopEdge) {
-            const curTop = parseFloat(cs.top) || 0;
-            if (curTop < H - 2) {
-              el.style.top = (curTop + H) + 'px';
-              el.style.height = (r.height - H) + 'px';
-            }
-            if (el.dataset) el.dataset.dshTbFixed = '1';
-          }
-        }
-      }
-      fixPanels();
-      // 面板可能延迟挂载：定时重试（500ms / 2s / 5s / 12s）
-      [500, 2000, 5000, 12000].forEach((ms) => setTimeout(fixPanels, ms));
-      try { new MutationObserver(fixPanels).observe(document.body, { childList: true, subtree: true }); } catch {}
-    })()`).catch((err) => console.log("[PANEL-FIX-ERR]", err.message));
-    // 最大化状态推送：自绘标题栏更新图标
-    mainWindow.on("maximize", () => { if (!mainWindow.isDestroyed()) mainWindow.webContents.send("win-maximized-changed", true); });
-    mainWindow.on("unmaximize", () => { if (!mainWindow.isDestroyed()) mainWindow.webContents.send("win-maximized-changed", false); });
+    // 2) 自绘标题栏 DOM + 按钮事件
+    mainWindow.webContents.executeJavaScript(injectFile("titlebar.js"))
+      .then(() => console.log("[dsh-desktop] 自绘标题栏已注入"))
+      .catch((err) => console.log("[TB-INJECT-ERR]", err.message));
+    // 3) 页面适配器（面板对齐 / 设置弹窗居中 / rAF 节流 + mutation 过滤）
+    mainWindow.webContents.executeJavaScript(injectFile("adapters.js").replaceAll("__TB_H__", String(TITLEBAR_HEIGHT)))
+      .then(() => console.log("[dsh-desktop] 页面适配器已注入"))
+      .catch((err) => console.log("[PANEL-FIX-ERR]", err.message));
   });
 
   mainWindow.loadURL(url);
 
-;
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => { mainWindow = null; });
@@ -486,10 +533,15 @@ function createWindow(url) {
     if (u.startsWith("http://") || u.startsWith("https://")) shell.openExternal(u);
     return { action: "deny" };
   });
-  // 新链接在系统浏览器打开
+  // 新链接在系统浏览器打开（严格同源校验：startsWith 前缀匹配可被 127.0.0.1:3080.evil.com 绕过）
   mainWindow.webContents.on("will-navigate", (e, u) => {
-    const base = `http://127.0.0.1:${backend ? backend.port : DEFAULT_PORT}`;
-    if (!u.startsWith(base)) { e.preventDefault(); shell.openExternal(u); }
+    const port = String(backend ? backend.port : DEFAULT_PORT);
+    let allow = false;
+    try {
+      const parsed = new URL(u);
+      allow = parsed.protocol === "http:" && parsed.hostname === "127.0.0.1" && (parsed.port === port || (parsed.port === "" && port === "80"));
+    } catch {}
+    if (!allow) { e.preventDefault(); shell.openExternal(u); }
   });
 }
 

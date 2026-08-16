@@ -35,12 +35,20 @@
 
 ### 方式一：安装版（推荐）
 
-从 **Releases** 页面按你的 CPU 架构下载对应安装包（约 163MB，内置 DSH 后端与 Node 运行时）：
+从 **Releases** 页面按你的 CPU 架构下载对应安装包（内置 DSH 后端）：
+
+**完整版（推荐，无需任何环境）**（约 163MB，内置 Node 运行时）：
 
 - `DeepSeek-Harness-Desktop-<版本>-x64.exe` — 绝大多数 Intel/AMD 电脑
 - `DeepSeek-Harness-Desktop-<版本>-arm64.exe` — ARM 设备（骁龙 Windows、Apple Silicon Windows 等）
 
+**Lite 版（本机已安装 Node.js ≥ 22 时可选）**（约 120MB，不含 Node，运行时使用系统 Node）：
+
+- `DeepSeek-Harness-Desktop-<版本>-x64-lite.exe`
+- `DeepSeek-Harness-Desktop-<版本>-arm64-lite.exe`
+
 > 不确定架构？任务管理器 → 性能 → CPU 查看架构标识。
+> 不知道自己的电脑有没有 Node.js？直接选完整版即可。
 
 运行安装向导（可自选安装目录），安装后从桌面/开始菜单启动。
 
