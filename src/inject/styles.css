@@ -39,11 +39,14 @@ body > div:first-of-type { padding-top: __TB_H__px !important; box-sizing: borde
 /* 设置弹窗打开时：右侧面板临时让路（弹窗全窗居中，不被遮挡/挤偏）；关闭后自动恢复 */
 html.dsh-settings-open [class*="_panel"]:not([class*="VOzbGW_panel"]),
 html.dsh-settings-open [class*="toggleCluster"],
-html.dsh-settings-open [class*="floating-expand"] { display: none !important; }
+html.dsh-settings-open [class*="floating-expand"],
+/* aionui 面板插件类名无 _panel 后缀，需单独覆盖（否则设置弹窗右侧被文件树/预览面板遮挡） */
+html.dsh-settings-open [class*="aionui-"] { display: none !important; }
 /* 小窗口（≤1180px）时隐藏右侧面板：避免面板挤压主内容导致布局错乱 */
 @media (max-width: 1180px) {
   [class*="_panel"]:not([class*="VOzbGW_panel"]) { display: none !important; }
   [class*="toggleCluster"], [class*="floating-expand"] { display: none !important; }
+  [class*="aionui-"] { display: none !important; }
 }
 /* 使用统计面板：彻底去除毛玻璃（禁 blur + 完全不透明背景；JS 会按 body 背景色覆盖 inline 样式） */
 [class*="us-shell"], [class*="us-shell"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-blend-mode: normal !important; }

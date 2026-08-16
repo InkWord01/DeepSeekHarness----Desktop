@@ -67,7 +67,7 @@
         // addedNodes：面板/弹窗出现；removedNodes：关闭（否则 dsh-settings-open 类会残留，右侧面板一直隐藏）
         for (const list of [mu.addedNodes, mu.removedNodes]) {
           for (const n of list) {
-            if (n.nodeType === 1 && /_panel|VOzbGW|us-shell|_overlay|_footer|_rail/.test(String(n.className || ''))) return true;
+            if (n.nodeType === 1 && /_panel|VOzbGW|us-shell|_overlay|_footer|_rail|aionui/.test(String(n.className || ''))) return true;
           }
         }
       }
