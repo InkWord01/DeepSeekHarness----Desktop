@@ -136,12 +136,14 @@ if (removed.length > 0) {
 }
 
 // ---- 3) node.exe（x64 复制系统，arm64 下载；--no-node 时跳过） ----
+// targetNode 在脚本作用域声明：[4/4] 打印需要引用（块级 const 会 ReferenceError）
+let targetNode = null;
 console.log("");
 if (NO_NODE) {
   console.log("[3/4] 跳过 node.exe（--no-node：Lite 包，运行时使用系统 Node）");
 } else {
 console.log("[3/4] 准备 node.exe (" + TARGET_ARCH + ") ...");
-const targetNode = join(BACKEND, "node.exe");
+targetNode = join(BACKEND, "node.exe");
 if (TARGET_ARCH === "x64") {
   const sysNode = process.execPath;
   copyFileSync(sysNode, targetNode);
@@ -181,6 +183,6 @@ console.log("[4/4] 完成 (" + TARGET_ARCH + ")");
 if (NO_NODE) {
   console.log("  node.exe: (未捆绑 — Lite 包，使用系统 Node)");
 } else {
-  console.log("  node.exe:", targetNode);
+  console.log("  node.exe:", targetNode || "(未找到 — 请检查第 3 步)");
 }
 console.log("  元信息:", join(BACKEND, "backend.info.json"));
