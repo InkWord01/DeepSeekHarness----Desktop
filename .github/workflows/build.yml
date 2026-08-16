@@ -73,6 +73,36 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Setup Node.js (for latest.yml generation)
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Generate merged latest.yml (full before lite for arch matching)
+        run: |
+          cat > gen-latest.cjs <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const crypto = require('crypto');
+          const dir = 'artifacts';
+          const files = fs.readdirSync(dir).filter(f => /^DeepSeek-Harness-Desktop-\d+\.\d+\.\d+-.*\.exe$/.test(f));
+          if (files.length === 0) { console.error('no artifacts found'); process.exit(1); }
+          // 排序：同架构内完整版在前（electron-updater 按 process.arch 命中第一个匹配项）
+          const rank = (f) => (/arm64/.test(f) ? 2 : 0) + (/-lite\.exe$/.test(f) ? 1 : 0);
+          files.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+          const entry = (f) => {
+            const buf = fs.readFileSync(path.join(dir, f));
+            return '  - url: ' + f + '\n    sha512: ' + crypto.createHash('sha512').update(buf).digest('base64') + '\n    size: ' + buf.length;
+          };
+          const version = (files[0].match(/DeepSeek-Harness-Desktop-(\d+\.\d+\.\d+)/) || [])[1];
+          const first = files[0];
+          const sha512 = crypto.createHash('sha512').update(fs.readFileSync(path.join(dir, first))).digest('base64');
+          const yml = 'version: ' + version + '\nfiles:\n' + files.map(entry).join('\n') + '\npath: ' + first + '\nsha512: ' + sha512 + '\nreleaseDate: ' + new Date().toISOString() + '\n';
+          fs.writeFileSync(path.join(dir, 'latest.yml'), yml);
+          console.log('latest.yml generated for version ' + version + ' with ' + files.length + ' artifacts');
+          EOF
+          node gen-latest.cjs
+
       - name: Cleanup stray release (electron-builder auto-publish leftovers)
         run: gh release delete "${{ github.ref_name }}" --yes || true
         env:
